@@ -1,0 +1,6 @@
+\\192.168.45.184\visualstudio\my-exam-tools\QueryAlchemy\QueryAlchemy\bin\x64\Release\QueryAlchemy.exe.config
+\\192.168.45.184\visualstudio\my-exam-tools\QueryAlchemy\QueryAlchemy\bin\x64\Release\QueryAlchemy.exe
+\\192.168.45.184\visualstudio\my-exam-tools\QueryAlchemy\QueryAlchemy\bin\x64\Release\QueryAlchemy.pdb
+\\192.168.45.184\visualstudio\my-exam-tools\QueryAlchemy\QueryAlchemy\obj\x64\Release\QueryAlchemy.csprojAssemblyReference.cache
+\\192.168.45.184\visualstudio\my-exam-tools\QueryAlchemy\QueryAlchemy\obj\x64\Release\QueryAlchemy.exe
+\\192.168.45.184\visualstudio\my-exam-tools\QueryAlchemy\QueryAlchemy\obj\x64\Release\QueryAlchemy.pdb
